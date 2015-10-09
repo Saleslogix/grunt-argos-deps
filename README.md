@@ -2,7 +2,7 @@
 Scans your ES6 source files and outputs the release.jsb2 with the files in the correct order. No more manually managing your dependencies!
 
 ## Install
-`npm isntall --save-dev git+ssh://git@github.com:Saleslogix/grunt-argos-deps.git`
+`npm isntall --save-dev git+ssh://git@github.com:Saleslogix/grunt-argos-deps.git#v0.1.0`
 
 ## Example Configuration
 ```
