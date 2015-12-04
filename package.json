@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "esprima": "^2.6.0",
-    "graphs": "^2.0.0",
+    "graphs": "git+https://git@github.com/Saleslogix/graphs.git#2.0.1",
     "grunt": "~0.4.5"
   }
 }
