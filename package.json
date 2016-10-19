@@ -8,7 +8,7 @@
     "url": "https://github.com/Saleslogix/grunt-argos-deps"
   },
   "peerDependencies": {
-    "grunt": "~0.4.5"
+    "grunt": ">=0.4.0"
   },
   "dependencies": {
     "esprima": "^2.6.0",
