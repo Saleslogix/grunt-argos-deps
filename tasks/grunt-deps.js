@@ -115,7 +115,7 @@ module.exports = function gruntDeps(grunt) {
             }
           });
       } catch (error) {
-        grunt.log.writeln('Error in ' + file + ': ' error);
+        grunt.log.writeln('Error in ' + file + ': ' + error);
       }
     });
 
