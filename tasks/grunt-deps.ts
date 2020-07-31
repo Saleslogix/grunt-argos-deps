@@ -1,10 +1,11 @@
-import * as ts from 'typescript';
+import ts from 'typescript';
 import path from 'path';
+import fs from 'fs';
 import Graph from 'graphs';
 
 export = function(grunt: any) {
-  grunt.registerTask('argos-tsdeps', () => {
-    const config = grunt.config.get('argos-tsdeps');
+  grunt.registerTask('argos-deps', () => {
+    const config = grunt.config.get('argos-deps');
     if (config.cwd) {
       grunt.file.setBase(config.cwd);
     }
@@ -15,11 +16,20 @@ export = function(grunt: any) {
 
     // Resolves import modules into a relative file path
     function resolvePath(module: string, sourceFile: string, ext = '.js') {
-      var config = grunt.config.get('argos-tsdeps');
+      // TODO: Better fallback mechanism
+      // Module could be importing something relative like './Component' - This could be a js, jsx, ts, tsx, file.
+      const fallbackExt = '.js';
+      var config = grunt.config.get('argos-deps');
+      let results: string;
       // Relative modules start with a period
       if (module.startsWith('.')) {
         var sourceDir = path.dirname(sourceFile);
-        return path.join(sourceDir, module) + ext;
+        results = path.join(sourceDir, module) + ext;
+        if (fs.existsSync(results)) {
+          return results;
+        } else {
+          return path.join(sourceDir, module) + fallbackExt;
+        }
       } else {
         var parts = module.split('/');
         var moduleName = parts.shift();
@@ -28,7 +38,12 @@ export = function(grunt: any) {
         })[0];
         if (config && config.location) {
           var relativeModule = parts.join(path.sep);
-          return path.join(config.location, relativeModule) + ext;
+          results = path.join(config.location, relativeModule) + ext;
+          if (fs.existsSync(results)) {
+            return results;
+          } else {
+            return path.join(config.location, relativeModule) + fallbackExt;
+          }
         }
       }
     }
@@ -130,7 +145,7 @@ export = function(grunt: any) {
           folderName: path.dirname(node.name)
             .replace(/\\/gi, '/') // force unix path seperator
             .replace(/\/src/gi, '/src-out'), // replace src with src-out since our dependencies were scanned in ES6
-          fileName: path.basename(node.name)
+          fileName: path.basename(node.name).replace(/\.ts$/gi, '.js') // TODO: Store the file/module separate from extension in the graph, could be .tsx for example
         };
       });
 
