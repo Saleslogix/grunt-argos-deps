@@ -145,7 +145,7 @@ module.exports = function (grunt) {
                 folderName: path_1.default.dirname(node.name)
                     .replace(/\\/gi, '/') // force unix path seperator
                     .replace(/\/src/gi, '/src-out'),
-                fileName: path_1.default.basename(node.name).replace(/\.ts$/gi, '.js') // TODO: Store the file/module separate from extension in the graph, could be .tsx for example
+                fileName: path_1.default.basename(node.name).replace(/\.(ts|tsx|jsx)$/gi, '.js')
             };
         });
         // Template processing

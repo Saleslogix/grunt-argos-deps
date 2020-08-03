@@ -179,7 +179,7 @@ export = function(grunt: any) {
           folderName: path.dirname(node.name)
             .replace(/\\/gi, '/') // force unix path seperator
             .replace(/\/src/gi, '/src-out'), // replace src with src-out since our dependencies were scanned in ES6
-          fileName: path.basename(node.name).replace(/\.ts$/gi, '.js') // TODO: Store the file/module separate from extension in the graph, could be .tsx for example
+          fileName: path.basename(node.name).replace(/\.(ts|tsx|jsx)$/gi, '.js')
         };
       });
 
