@@ -3,105 +3,139 @@ import path from 'path';
 import fs from 'fs';
 import Graph from 'graphs';
 
+interface GraphNode {
+  name: string;
+}
+
+interface TaskConfig {
+  files: string | string[],
+  cwd: string,
+  output: string,
+  template: string,
+  modules: ModuleConfig[]
+}
+
+interface ModuleConfig {
+  name: string;
+  location: string;
+}
+
+interface ModuleConfigs {
+  [key: string]: ModuleConfig
+}
+
+const moduleFileExtensions = ['.js', '.jsx', '.ts', '.tsx'];
+function resolveModulePath(modulePath: string) {
+  return moduleFileExtensions.map((ext) => {
+    return `${modulePath}${ext}`;
+  }).filter((modulePathWithExt) => {
+    return fs.existsSync(modulePathWithExt);
+  })[0]; // TODO: Should probably error here if multiple are resolved..
+}
+
+function resolveRelativeModule(module: string, sourceFile: string): string {
+  const sourceDir = path.dirname(sourceFile);
+  return resolveModulePath(path.join(sourceDir, module));
+}
+
+function resolveAbsoluteModule(module: string, moduleConfigs: ModuleConfigs): string | null {
+  const parts = module.split('/');
+  const absModule = parts.join(path.sep);
+  const moduleName = parts.shift() || '';
+  const moduleConfig = moduleConfigs[moduleName];
+  if (moduleConfig && moduleConfig.location) {
+    return resolveModulePath(path.join(moduleConfig.location, absModule));
+  }
+  
+  return null;
+}
+
+// Khan topological sort (https://en.wikipedia.org/wiki/Topological_sorting#Algorithms)
+function sortGraph(graph: Graph<GraphNode>) {
+  const set: GraphNode[] = [];
+  const sorted: GraphNode[] = [];
+
+  // start nodes which have no incoming edges
+  graph.forEach(function(node: any) {
+    if (graph.to(node)
+      .size === 0) {
+      set.push(node);
+    }
+  });
+
+  while (set.length > 0) {
+    const n = set.shift();
+    if (!n) {
+      break;
+    }
+
+    sorted.push(n);
+
+    const incoming = graph.from(n);
+    incoming.forEach(function(m:any) {
+      graph.unlink(n, m);
+      if (graph.to(m)
+        .size === 0) {
+        set.push(m);
+      }
+    });
+  }
+
+  // Ensure the graph has no more links
+  graph.forEach(function(node) {
+    if (graph.from(node)
+      .size > 0 || graph.to(node)
+      .size > 0) {
+      throw new Error('Circular dependencies detected.');
+    }
+  });
+
+  return sorted;
+}
+
 export = function(grunt: any) {
   grunt.registerTask('argos-deps', () => {
-    const config = grunt.config.get('argos-deps');
+    const config: TaskConfig = grunt.config.get('argos-deps');
     if (config.cwd) {
       grunt.file.setBase(config.cwd);
     }
 
     const files = grunt.file.expand(config.files);
-    const graph = new Graph();
-    const nodes: any = {};
+    const graph = new Graph<GraphNode>();
+    const moduleConfigs: ModuleConfigs = {};
+    config.modules.forEach((moduleConfig: ModuleConfig) => {
+      moduleConfigs[moduleConfig.name] = moduleConfig;
+    });
 
     // Resolves import modules into a relative file path
-    function resolvePath(module: string, sourceFile: string, ext = '.js') {
-      // TODO: Better fallback mechanism
-      // Module could be importing something relative like './Component' - This could be a js, jsx, ts, tsx, file.
-      const fallbackExt = '.js';
-      var config = grunt.config.get('argos-deps');
-      let results: string;
+    function resolvePath(module: string, sourceFile: string) {
       // Relative modules start with a period
+      let modulePath = null;
       if (module.startsWith('.')) {
-        var sourceDir = path.dirname(sourceFile);
-        results = path.join(sourceDir, module) + ext;
-        if (fs.existsSync(results)) {
-          return results;
-        } else {
-          return path.join(sourceDir, module) + fallbackExt;
-        }
+        modulePath = resolveRelativeModule(module, sourceFile);
       } else {
-        var parts = module.split('/');
-        var moduleName = parts.shift();
-        var config = config.modules.filter(function(m: any) {
-          return m.name === moduleName;
-        })[0];
-        if (config && config.location) {
-          var relativeModule = parts.join(path.sep);
-          results = path.join(config.location, relativeModule) + ext;
-          if (fs.existsSync(results)) {
-            return results;
-          } else {
-            return path.join(config.location, relativeModule) + fallbackExt;
-          }
-        }
+        modulePath = resolveAbsoluteModule(module, moduleConfigs);
       }
+
+      return modulePath;
     }
 
+    const _nodeCache: { [key: string]: GraphNode } = {};
+
     // Add nodes to the graph where f is the file path.
-    function add(f: string | undefined) {
-      if (f === null || typeof f === 'undefined') {
-        return null;
+    function add(f: string): GraphNode {
+      if (_nodeCache[f]) {
+        return _nodeCache[f];
       }
 
-      if (nodes[f]) {
-        return nodes[f];
-      }
-
-      nodes[f] = {
+      const node = { 
         name: f
       };
 
-      graph.add(nodes[f]);
-      return nodes[f];
-    }
+      _nodeCache[f] = node;
 
-    // Khan topological sort (https://en.wikipedia.org/wiki/Topological_sorting#Algorithms)
-    function sortGraph(graph: any) {
-      var set:any = [];
-      var sorted = [];
-      // start nodes which have no incoming edges
-      graph.forEach(function(node: any) {
-        if (graph.to(node)
-          .size === 0) {
-          set.push(node);
-        }
-      });
-
-      while (set.length > 0) {
-        var n = set.shift();
-        sorted.push(n);
-
-        var incoming = graph.from(n);
-        incoming.forEach(function(m:any) {
-          graph.unlink(n, m);
-          if (graph.to(m)
-            .size === 0) {
-            set.push(m);
-          }
-        });
-      }
-
-      // Ensure the graph has no more links
-      graph.forEach(function(node:any) {
-        if (graph.from(node)
-          .size > 0 || graph.to(node)
-          .size > 0) {
-          throw new Error('Circular dependencies detected.');
-        }
-      });
-
-      return sorted;
+      graph.add(node);
+      return node;
     }
 
     // - Iterate our JS(ES6) and Typescript files
@@ -112,7 +146,6 @@ export = function(grunt: any) {
     files.forEach(function(file: string) {
       var sourceDir = path.dirname(file);
       var base = path.basename(file);
-      const ext = path.extname(file);
       var filepath = path.join(sourceDir, base); // grunt is not using correct seperator on windows
       var fileNode = add(filepath);
       var contents = grunt.file.read(filepath, {
@@ -126,12 +159,13 @@ export = function(grunt: any) {
           }
 
           const importNode = node as ts.ImportDeclaration;
-          const importPath = importNode.moduleSpecifier.getText().replace(/\'/gi, '');
-          const p = resolvePath(importPath, filepath, ext);
-          const depNode = add(p);
-          if (depNode) {
+          const importPath  = importNode.moduleSpecifier.getText().replace(/\'/gi, '');
+          const resolvedImportPath = resolvePath(importPath, filepath);
+          if (resolvedImportPath) {
+            const depNode = add(resolvedImportPath);
             graph.link(depNode, fileNode);
           }
+          
         });
       } catch (error) {
         grunt.log.writeln('Error in ' + file + ': ' + error);
@@ -139,7 +173,7 @@ export = function(grunt: any) {
     });
 
     // Sort the graph and transform the data so it is template friendly
-    var sorted = sortGraph(graph)
+    const sorted = sortGraph(graph)
       .map(function(node) {
         return {
           folderName: path.dirname(node.name)
@@ -150,10 +184,10 @@ export = function(grunt: any) {
       });
 
     // Template processing
-    var template = grunt.file.read(config.template, {
+    const template = grunt.file.read(config.template, {
       encoding: 'utf8'
     });
-    var content = grunt.template.process(template, {
+    const content = grunt.template.process(template, {
       data: {
         files: sorted
       }
